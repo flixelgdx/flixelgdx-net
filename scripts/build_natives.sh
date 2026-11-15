@@ -50,7 +50,8 @@ fetch() {
   curl -fsSL --retry 5 -o "${SOURCES}/mbedtls.tar.bz2" \
     "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${MBEDTLS_VERSION}/mbedtls-${MBEDTLS_VERSION}.tar.bz2"
   mkdir -p "${SOURCES}/mbedtls"
-  tar -xjf "${SOURCES}/mbedtls.tar.bz2" -C "${SOURCES}/mbedtls" --strip-components=1
+  # Relative paths, because on Windows tar reads "C:" at the start of a path as a computer name.
+  (cd "${SOURCES}" && tar -xjf mbedtls.tar.bz2 -C mbedtls --strip-components=1)
   rm -f "${SOURCES}/mbedtls.tar.bz2"
   echo "${wanted}" > "${stamp}"
 }

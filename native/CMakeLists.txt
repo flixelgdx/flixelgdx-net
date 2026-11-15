@@ -26,6 +26,8 @@ set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 set(BUILD_SHARED_LIBS OFF)
+# Nothing here is ever installed; the one library that matters is copied out by the build script.
+set(CMAKE_SKIP_INSTALL_RULES ON)
 
 # Mbed TLS does the encryption. Only its static libraries are wanted.
 set(ENABLE_PROGRAMS OFF)
@@ -36,8 +38,10 @@ set(USE_STATIC_MBEDTLS_LIBRARY ON)
 set(USE_SHARED_MBEDTLS_LIBRARY OFF)
 set(MBEDTLS_USER_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/mbedtls_user_config.h" CACHE FILEPATH "" FORCE)
 add_subdirectory("${FLIXELNET_DEPS}/mbedtls" mbedtls EXCLUDE_FROM_ALL)
-# libdatachannel looks for the target under this name.
-add_library(MbedTLS::MbedTLS ALIAS mbedtls)
+# libdatachannel looks for the target under this name. It is declared as an imported target so
+# that libdatachannel's install rules, which are never used here, do not object to it.
+add_library(MbedTLS::MbedTLS INTERFACE IMPORTED GLOBAL)
+set_target_properties(MbedTLS::MbedTLS PROPERTIES INTERFACE_LINK_LIBRARIES mbedtls)
 
 # libdatachannel does WebRTC. Data channels are all that is needed, so media and its own WebSocket
 # support are left out, which keeps the library small.
