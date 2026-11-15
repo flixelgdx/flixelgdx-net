@@ -110,9 +110,14 @@ public final class FlixelNetMessageProcessor extends AbstractProcessor {
     StringBuilder write = new StringBuilder();
     StringBuilder read = new StringBuilder();
     StringBuilder reset = new StringBuilder();
+    StringBuilder lerp = new StringBuilder();
     boolean ok = true;
     for (VariableElement field : fields) {
-      ok &= appendField(type, field, statics, layout, write, read, reset);
+      boolean fieldOk = appendField(type, field, statics, layout, write, read, reset);
+      if (fieldOk) {
+        appendLerp(field, lerp);
+      }
+      ok &= fieldOk;
     }
     if (!ok) {
       return;
@@ -147,7 +152,12 @@ public final class FlixelNetMessageProcessor extends AbstractProcessor {
     src.append("  @Override\n  public void write(").append(typeName).append(" m, FlixelNetBuffer out) {\n")
         .append(write).append("  }\n\n");
     src.append("  @Override\n  public void read(").append(typeName).append(" m, FlixelNetBuffer in) {\n")
-        .append(read).append("  }\n");
+        .append(read).append("  }\n\n");
+    src.append("  @Override\n  public void copy(").append(typeName).append(" from, ").append(typeName)
+        .append(" to) {\n    lerp(from, from, 0f, to);\n  }\n\n");
+    src.append("  @Override\n  public void lerp(").append(typeName).append(" a, ").append(typeName)
+        .append(" b, float t, ").append(typeName).append(" o) {\n    ").append(typeName)
+        .append(" s = t < 1f ? a : b;\n").append(lerp).append("  }\n");
     src.append("}\n");
 
     write(type, packageName, codecName, src.toString());
@@ -298,6 +308,60 @@ public final class FlixelNetMessageProcessor extends AbstractProcessor {
     }
     layout.append("\n    + \"").append(name).append(':').append(code).append(";\"");
     return true;
+  }
+
+  /**
+   * Emits the code that fills one field of the message {@code o} with a value between the same
+   * field of the messages {@code a} and {@code b}. Only floating point fields can be in between;
+   * everything else is taken from {@code s}, which is whichever of the two currently counts.
+   */
+  private void appendLerp(VariableElement field, StringBuilder lerp) {
+    String n = field.getSimpleName().toString();
+    TypeMirror t = field.asType();
+    boolean isFinal = field.getModifiers().contains(Modifier.FINAL);
+    switch (t.getKind()) {
+      case FLOAT -> lerp.append("    o.").append(n).append(" = a.").append(n).append(" + (b.").append(n)
+          .append(" - a.").append(n).append(") * t;\n");
+      case DOUBLE -> lerp.append("    o.").append(n).append(" = a.").append(n).append(" + (b.").append(n)
+          .append(" - a.").append(n).append(") * (double) t;\n");
+      case ARRAY -> {
+        TypeMirror component = ((ArrayType) t).getComponentType();
+        lerp.append("    if (s.").append(n).append(" == null) {\n      o.").append(n).append(" = null;\n")
+            .append("    } else if (o.").append(n).append(" != s.").append(n).append(") {\n")
+            .append("      if (o.").append(n).append(" == null || o.").append(n).append(".length != s.").append(n)
+            .append(".length) {\n        o.").append(n).append(" = new ").append(component).append("[s.")
+            .append(n).append(".length];\n      }\n      System.arraycopy(s.").append(n).append(", 0, o.")
+            .append(n).append(", 0, s.").append(n).append(".length);\n    }\n");
+      }
+      case DECLARED -> {
+        if (isFlixelString(t)) {
+          lerp.append("    if (s.").append(n).append(" == null) {\n      if (o.").append(n)
+              .append(" != null) {\n        o.").append(n).append(".clear();\n      }\n")
+              .append("    } else if (o.").append(n).append(" != s.").append(n).append(") {\n");
+          if (!isFinal) {
+            lerp.append("      if (o.").append(n).append(" == null) {\n        o.").append(n).append(" = new ")
+                .append(FLIXEL_STRING).append("();\n      }\n");
+          }
+          lerp.append("      if (o.").append(n).append(" != null) {\n        o.").append(n).append(".set(s.")
+              .append(n).append(");\n      }\n    }\n");
+        } else if (isMessage(t)) {
+          TypeElement element = (TypeElement) ((DeclaredType) t).asElement();
+          String pkg = packageOf(element);
+          String codec = (pkg.isEmpty() ? "" : pkg + ".") + codecSimpleName(element);
+          lerp.append("    if (a.").append(n).append(" != null && b.").append(n).append(" != null) {\n");
+          if (!isFinal) {
+            lerp.append("      if (o.").append(n).append(" == null) {\n        o.").append(n).append(" = ")
+                .append(codec).append(".INSTANCE.create();\n      }\n");
+          }
+          lerp.append("      if (o.").append(n).append(" != null) {\n        ").append(codec)
+              .append(".INSTANCE.lerp(a.").append(n).append(", b.").append(n).append(", t, o.").append(n)
+              .append(");\n      }\n    }\n");
+        } else {
+          lerp.append("    o.").append(n).append(" = s.").append(n).append(";\n");
+        }
+      }
+      default -> lerp.append("    o.").append(n).append(" = s.").append(n).append(";\n");
+    }
   }
 
   private String appendPlainInteger(String f, TypeKind kind, StringBuilder write, StringBuilder read) {

@@ -97,4 +97,42 @@ public interface FlixelNetCodec<T> {
    * @param in The buffer to read from.
    */
   void read(@NotNull T message, @NotNull FlixelNetBuffer in);
+
+  /**
+   * Makes one message hold the same values as another.
+   *
+   * <p>Generated codecs copy field by field. A codec written by hand that does not override this
+   * gets a slower copy that writes the message into a spare buffer and reads it back.
+   *
+   * @param from The message to copy. It is not changed.
+   * @param to The message that receives the values.
+   */
+  default void copy(@NotNull T from, @NotNull T to) {
+    FlixelNetBuffer spare = FlixelNetCodecs.SPARE;
+    spare.clear();
+    write(from, spare);
+    read(to, spare);
+  }
+
+  /**
+   * Fills a message with values part of the way between two others, which is how movement is
+   * made smooth between two updates from the network.
+   *
+   * <p>Think of two photos of a rolling ball taken a moment apart. With {@code t} at 0 the result
+   * is the first photo, at 1 it is the second, and at 0.5 the ball is drawn halfway between. In
+   * a generated codec, {@code float} and {@code double} fields slide like the ball does. Every
+   * other kind of field cannot be "halfway", so it keeps the value of {@code from} until
+   * {@code t} reaches 1.
+   *
+   * @param from The earlier message.
+   * @param to The later message.
+   * @param t How far along the way from {@code from} to {@code to}, from 0 to 1.
+   * @param out The message that receives the result. It may be {@code from} or {@code to}.
+   */
+  default void lerp(@NotNull T from, @NotNull T to, float t, @NotNull T out) {
+    T source = t < 1f ? from : to;
+    if (source != out) {
+      copy(source, out);
+    }
+  }
 }

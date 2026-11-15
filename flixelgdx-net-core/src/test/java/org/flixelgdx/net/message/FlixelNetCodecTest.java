@@ -292,4 +292,61 @@ class FlixelNetCodecTest {
     }
     throw new AssertionError("could not find the array length");
   }
+
+  @Test
+  void copyAndLerpAreGeneratedFieldByField() {
+    TestMessagesPointNetCodec codec = TestMessagesPointNetCodec.INSTANCE;
+    TestMessages.Point a = new TestMessages.Point();
+    TestMessages.Point b = new TestMessages.Point();
+    TestMessages.Point out = new TestMessages.Point();
+    a.x = 10f;
+    a.y = 20f;
+    b.x = 20f;
+    b.y = 60f;
+    codec.lerp(a, b, 0.25f, out);
+    assertEquals(12.5f, out.x);
+    assertEquals(30f, out.y);
+    codec.copy(b, out);
+    assertEquals(20f, out.x);
+    assertEquals(60f, out.y);
+  }
+
+  @Test
+  void lerpKeepsWholeValuesFromTheEarlierMessageUntilTheEnd() {
+    TestMessagesEverythingNetCodec codec = TestMessagesEverythingNetCodec.INSTANCE;
+    TestMessages.Everything a = new TestMessages.Everything();
+    TestMessages.Everything b = new TestMessages.Everything();
+    TestMessages.Everything out = new TestMessages.Everything();
+    a.number = 1;
+    a.real = 0f;
+    a.text = "old";
+    a.name.set("first");
+    a.ints = new int[] { 1, 2 };
+    a.spawn.x = 0f;
+    b.number = 2;
+    b.real = 8f;
+    b.text = "new";
+    b.name.set("second");
+    b.ints = new int[] { 3, 4, 5 };
+    b.spawn.x = 100f;
+
+    codec.lerp(a, b, 0.5f, out);
+    assertEquals(1, out.number);
+    assertEquals(4f, out.real);
+    assertEquals("old", out.text);
+    assertEquals("first", out.name.toString());
+    assertEquals(2, out.ints.length);
+    assertEquals(50f, out.spawn.x);
+
+    codec.lerp(a, b, 1f, out);
+    assertEquals(2, out.number);
+    assertEquals(8f, out.real);
+    assertEquals("new", out.text);
+    assertEquals("second", out.name.toString());
+    assertEquals(3, out.ints.length);
+    assertEquals(5, out.ints[2]);
+    // The result owns its own array, so changing it does not change the source.
+    out.ints[0] = 99;
+    assertEquals(3, b.ints[0]);
+  }
 }
