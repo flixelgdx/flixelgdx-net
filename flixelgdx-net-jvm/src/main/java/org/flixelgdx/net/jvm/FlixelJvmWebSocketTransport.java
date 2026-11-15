@@ -97,10 +97,9 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
   /** Guards everything below that both the game thread and the network threads touch. */
   private final Object lock = new Object();
   private final FlixelNetEventQueue queue = new FlixelNetEventQueue();
-  private final FlixelNetEventQueue signals = new FlixelNetEventQueue();
   private final FlixelIntMap<Connection> connections = new FlixelIntMap<>();
   private final FlixelArray<Connection> closing = new FlixelArray<>();
-  private final SignalRelay signalRelay = new SignalRelay();
+  private final Relay relay = new Relay();
   private volatile FlixelNetTransportState state = FlixelNetTransportState.CLOSED;
   private ServerSocket server;
   private int nextId = 1;
@@ -150,8 +149,12 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
   @Override
   public void poll(@NotNull FlixelNetTransportListener listener) {
     synchronized (lock) {
-      signals.drain(signalRelay);
-      queue.drain(listener);
+      relay.target = listener;
+      try {
+        queue.drain(relay);
+      } finally {
+        relay.target = null;
+      }
     }
   }
 
@@ -199,7 +202,6 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
       }
       connections.clear();
       queue.clear();
-      signals.clear();
       state = FlixelNetTransportState.CLOSED;
       for (int i = 0, n = closing.getSize(); i < n; i++) {
         finish(closing.get(i));
@@ -218,6 +220,11 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
   @Override
   public int getMaxPacketSize(@NotNull FlixelNetChannel channel) {
     return channel == FlixelNetChannel.UNRELIABLE ? MAX_UNRELIABLE_SIZE : MAX_RELIABLE_SIZE;
+  }
+
+  @Override
+  public @NotNull String getRoute(int connection) {
+    return "WebSocket";
   }
 
   @Override
@@ -280,6 +287,39 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
    */
   protected final boolean sendSignal(int connection, byte[] data, int offset, int length) {
     return write(connection, TAG_SIGNAL, data, offset, length);
+  }
+
+  /**
+   * Called on the game thread, during {@link #poll(FlixelNetTransportListener)}, right before
+   * the listener hears that a connection opened.
+   *
+   * @param connection The id of the connection.
+   */
+  protected void onConnectionOpened(int connection) {}
+
+  /**
+   * Called on the game thread, during {@link #poll(FlixelNetTransportListener)}, right before
+   * the listener hears that a connection closed.
+   *
+   * @param connection The id of the connection.
+   */
+  protected void onConnectionClosed(int connection) {}
+
+  /**
+   * Ends a connection because something went wrong with it. The listener hears about it on the
+   * next poll.
+   *
+   * @param connection The id of the connection to end.
+   * @param reason Why it is being ended.
+   */
+  protected final void drop(int connection, FlixelNetCloseReason reason) {
+    Connection conn;
+    synchronized (lock) {
+      conn = connections.get(connection);
+    }
+    if (conn != null) {
+      fail(conn, reason);
+    }
   }
 
   private boolean write(int connection, int tag, byte[] data, int offset, int length) {
@@ -480,7 +520,9 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
       } else if (tag == TAG_UNRELIABLE) {
         queue.pushData(conn.id, FlixelNetChannel.UNRELIABLE, message, 1, size - 1);
       } else if (tag == TAG_SIGNAL) {
-        signals.pushData(conn.id, FlixelNetChannel.RELIABLE, message, 1, size - 1);
+        // Signals wait in the same line as game data, so the two keep the order they were sent
+        // in. A negative connection number marks an entry as a signal.
+        queue.pushData(-conn.id - 1, FlixelNetChannel.RELIABLE, message, 1, size - 1);
       }
     }
   }
@@ -733,18 +775,30 @@ public class FlixelJvmWebSocketTransport implements FlixelNetTransport {
     }
   }
 
-  /** Passes signaling messages from the signal queue to {@link #onSignal}. */
-  private final class SignalRelay implements FlixelNetTransportListener {
+  /** Stands between the queue and the listener, to pick out signals and announce changes. */
+  private final class Relay implements FlixelNetTransportListener {
+
+    FlixelNetTransportListener target;
 
     @Override
-    public void onOpen(int connection) {}
+    public void onOpen(int connection) {
+      onConnectionOpened(connection);
+      target.onOpen(connection);
+    }
 
     @Override
-    public void onClose(int connection, FlixelNetCloseReason reason) {}
+    public void onClose(int connection, FlixelNetCloseReason reason) {
+      onConnectionClosed(connection);
+      target.onClose(connection, reason);
+    }
 
     @Override
     public void onData(int connection, FlixelNetChannel channel, byte[] data, int offset, int length) {
-      onSignal(connection, data, offset, length);
+      if (connection < 0) {
+        onSignal(-connection - 1, data, offset, length);
+      } else {
+        target.onData(connection, channel, data, offset, length);
+      }
     }
   }
 

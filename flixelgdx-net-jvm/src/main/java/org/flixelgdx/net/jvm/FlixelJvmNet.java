@@ -47,7 +47,8 @@ import java.security.SecureRandom;
  * }</pre>
  *
  * <p>A host listens two ways at once on the same port number: over UDP for desktop and Android
- * players, and over WebSocket for players in a browser.
+ * players, and over WebSocket for players in a browser. Browser connections upgrade themselves
+ * to WebRTC when the native WebRTC library is present; see {@link FlixelJvmWebTransport}.
  */
 public final class FlixelJvmNet implements FlixelNetTransportFactory {
 
@@ -77,6 +78,8 @@ public final class FlixelJvmNet implements FlixelNetTransportFactory {
 
   @Override
   public @NotNull FlixelNetTransport newWebTransport() {
-    return new FlixelJvmWebSocketTransport();
+    FlixelJvmWebTransport transport = new FlixelJvmWebTransport();
+    transport.setIce(FlixelNet.getIce());
+    return transport;
   }
 }

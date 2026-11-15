@@ -32,3 +32,14 @@ include("flixelgdx-net-core")
 include("flixelgdx-net-processor")
 include("flixelgdx-net-jvm")
 include("flixelgdx-net-html5")
+
+// One jar per desktop platform holding the native WebRTC library. The library of a platform is
+// never committed, so a fresh checkout has no folder for it, and Gradle refuses a project without
+// one; the folder is created here.
+val nativeTargets = listOf(
+  "linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64", "macos-x86_64", "macos-aarch64"
+)
+for (target in nativeTargets) {
+  include("flixelgdx-net-natives-$target")
+  project(":flixelgdx-net-natives-$target").projectDir = file("flixelgdx-net-natives/$target").also { it.mkdirs() }
+}

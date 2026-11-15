@@ -13,6 +13,14 @@ dependencies {
   testImplementation(platform(libs.junit.bom))
   testImplementation(libs.junit.jupiter)
   testAnnotationProcessor(project(":flixelgdx-net-processor"))
+  // The WebRTC tests run when the native library of this computer's platform has been unpacked
+  // into the checkout, and are skipped otherwise.
+  testRuntimeOnly(project(":flixelgdx-net-natives-linux-x86_64"))
+  testRuntimeOnly(project(":flixelgdx-net-natives-linux-aarch64"))
+  testRuntimeOnly(project(":flixelgdx-net-natives-windows-x86_64"))
+  testRuntimeOnly(project(":flixelgdx-net-natives-windows-aarch64"))
+  testRuntimeOnly(project(":flixelgdx-net-natives-macos-x86_64"))
+  testRuntimeOnly(project(":flixelgdx-net-natives-macos-aarch64"))
 }
 
 tasks.named<Test>("test") {
