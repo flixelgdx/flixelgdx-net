@@ -25,6 +25,8 @@
  *       protocol that lists them.</li>
  *   <li>{@code org.flixelgdx.net.transport} holds the transport interface, the events it reports,
  *       and a loopback transport that works inside a single program.</li>
+ *   <li>{@code org.flixelgdx.net.replication} keeps game objects the same on every computer: the
+ *       host spawns entities and clients see them appear, move smoothly, and disappear.</li>
  * </ul>
  */
 package org.flixelgdx.net;
