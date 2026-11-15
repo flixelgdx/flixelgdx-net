@@ -1,4 +1,5 @@
 [versions]
+androidGradle = "8.11.0"
 flixelgdx = "0.7.2"
 jetbrainsAnnotations = "26.1.0"
 junit = "5.10.0"
@@ -15,6 +16,7 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 
 [plugins]
+android-library = { id = "com.android.library", version.ref = "androidGradle" }
 teavm = { id = "org.teavm", version.ref = "teavm" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 vanniktech = { id = "com.vanniktech.maven.publish", version.ref = "vanniktech" }

@@ -8,12 +8,15 @@
 plugins {
   eclipse
   idea
+  id("flixelgdx.spotless-android")
+  id("flixelgdx.checkstyle-android")
   // These plugins must be declared in the root classpath scope to prevent classloader conflicts
   // when convention plugins apply them to the modules. Neither is applied to the root project
   // itself; the modules apply them via the flixelgdx.* convention plugins.
   alias(libs.plugins.spotless) apply false
   alias(libs.plugins.vanniktech) apply false
   alias(libs.plugins.teavm) apply false
+  alias(libs.plugins.android.library) apply false
 }
 
 // The root project deliberately has no group, so a game that includes this build as a composite

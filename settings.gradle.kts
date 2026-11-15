@@ -1,3 +1,5 @@
+import java.util.Properties
+
 /**
  * Root settings for the FlixelGDX Net build.
  *
@@ -10,6 +12,7 @@ pluginManagement {
   includeBuild("build-logic")
   repositories {
     gradlePluginPortal()
+    google()
     mavenCentral()
   }
 }
@@ -18,11 +21,28 @@ plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"
 }
 
+// The Android module is optional so the extension can be built without an Android SDK.
+// Enable via: -PincludeAndroid=true (CI / one-off) or includeAndroid=true in local.properties (gitignored).
+val includeAndroidFromCli = startParameter.projectProperties["includeAndroid"] == "true"
+val includeAndroidFromLocal = run {
+  val f = File(settingsDir, "local.properties")
+  if (f.exists()) {
+    val props = Properties()
+    f.inputStream().use(props::load)
+    props.getProperty("includeAndroid", "false") == "true"
+  } else {
+    false
+  }
+}
+val includeAndroid = includeAndroidFromCli || includeAndroidFromLocal
+gradle.extra["includeAndroid"] = includeAndroid
+
 dependencyResolutionManagement {
   repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
     mavenCentral()
     gradlePluginPortal()
+    google()
   }
 }
 
@@ -42,4 +62,8 @@ val nativeTargets = listOf(
 for (target in nativeTargets) {
   include("flixelgdx-net-natives-$target")
   project(":flixelgdx-net-natives-$target").projectDir = file("flixelgdx-net-natives/$target").also { it.mkdirs() }
+}
+
+if (includeAndroid) {
+  include("flixelgdx-net-android")
 }
