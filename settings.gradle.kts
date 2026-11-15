@@ -31,3 +31,4 @@ rootProject.name = "flixelgdx-net"
 include("flixelgdx-net-core")
 include("flixelgdx-net-processor")
 include("flixelgdx-net-jvm")
+include("flixelgdx-net-html5")

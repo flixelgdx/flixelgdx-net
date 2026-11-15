@@ -13,6 +13,7 @@ plugins {
   // itself; the modules apply them via the flixelgdx.* convention plugins.
   alias(libs.plugins.spotless) apply false
   alias(libs.plugins.vanniktech) apply false
+  alias(libs.plugins.teavm) apply false
 }
 
 // The root project deliberately has no group, so a game that includes this build as a composite
