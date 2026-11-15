@@ -250,6 +250,11 @@ public final class FlixelNetDatagramTransport<A> implements FlixelNetTransport {
   }
 
   @Override
+  public @NotNull String getRoute(int connection) {
+    return "UDP";
+  }
+
+  @Override
   public @NotNull FlixelNetTransportState getState() {
     return state;
   }

@@ -144,6 +144,21 @@ public interface FlixelNetTransport {
   int getMaxPacketSize(@NotNull FlixelNetChannel channel);
 
   /**
+   * Returns a short name for how a connection's packets are traveling right now, such as
+   * {@code "UDP"}, {@code "WebRTC"}, {@code "WebSocket"} or {@code "Loopback"}.
+   *
+   * <p>This is meant for showing to a person, for example on a debug screen. Some transports can
+   * change route while a connection is open.
+   *
+   * @param connection The id of the connection to ask about.
+   * @return The name of the route.
+   */
+  @NotNull
+  default String getRoute(int connection) {
+    return "Unknown";
+  }
+
+  /**
    * Returns what the transport is doing right now.
    *
    * @return The current state.

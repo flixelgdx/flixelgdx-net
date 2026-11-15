@@ -145,6 +145,17 @@ public final class FlixelNetPeer {
   }
 
   /**
+   * Returns a short name for how this peer's packets are traveling right now, such as
+   * {@code "UDP"}, {@code "WebRTC"}, {@code "WebSocket"} or {@code "Loopback"}.
+   *
+   * @return The name of the route, meant for showing to a person.
+   */
+  @NotNull
+  public String getRoute() {
+    return transport.getRoute(connection);
+  }
+
+  /**
    * Returns the transport this peer is connected through.
    *
    * @return The transport.

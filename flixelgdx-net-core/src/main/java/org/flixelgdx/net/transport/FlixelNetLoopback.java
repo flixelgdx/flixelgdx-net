@@ -322,6 +322,11 @@ public final class FlixelNetLoopback {
     }
 
     @Override
+    public @NotNull String getRoute(int connection) {
+      return "Loopback";
+    }
+
+    @Override
     public @NotNull FlixelNetTransportState getState() {
       return state;
     }

@@ -53,3 +53,7 @@ Thumbs.db
 *~
 *.*#
 *#*#
+
+## Native libraries (built by CI, never committed):
+/flixelgdx-net-natives/*/src/main/resources/natives/
+/flixelgdx-net-android/src/main/jniLibs/

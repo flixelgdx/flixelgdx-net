@@ -25,10 +25,12 @@ package org.flixelgdx.net.html5;
 
 import org.flixelgdx.net.transport.FlixelNetChannel;
 import org.flixelgdx.net.transport.FlixelNetCloseReason;
+import org.flixelgdx.net.transport.FlixelNetIceConfig;
 import org.flixelgdx.net.transport.FlixelNetTransport;
 import org.flixelgdx.net.transport.FlixelNetTransportListener;
 import org.flixelgdx.net.transport.FlixelNetTransportState;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.typedarrays.Int8Array;
 
@@ -40,6 +42,14 @@ import java.nio.ByteBuffer;
  * <p>A browser tab is not allowed to open ordinary network sockets, and it can never accept
  * connections, so a web game can join a session but never host one. What a browser can do is
  * open a WebSocket to a host, and that is what this transport starts with.
+ *
+ * <p>A WebSocket delivers everything in order, which makes a late packet hold up the ones behind
+ * it. So once the WebSocket is open, the transport also tries to set up a WebRTC connection to
+ * the same host, using the WebSocket to arrange it. WebRTC can drop a late packet instead of
+ * waiting for it, which is what fast-changing data such as positions wants. If WebRTC connects,
+ * packets move over to it without the game noticing. If it does not (the host has no WebRTC
+ * support, or a firewall is in the way), the game simply stays on the WebSocket.
+ * {@link #getRoute(int)} says which one is in use.
  *
  * <p>Addresses look like {@code "ws://192.168.1.20:7777"}. A plain {@code "host:port"} works too:
  * it becomes {@code ws://}, or {@code wss://} when the page itself was loaded over HTTPS, because
@@ -81,8 +91,11 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
   private byte[] incoming = new byte[SCRATCH_START];
   private FlixelNetTransportState state = FlixelNetTransportState.CLOSED;
 
+  private FlixelNetIceConfig ice;
+
   /** The number of this transport's connection in the page's table, or zero when it has none. */
   private int handle;
+  private boolean webRtc = true;
 
   /** Creates a transport that is not connected yet. */
   public FlixelHtml5WebTransport() {}
@@ -107,7 +120,7 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
     if (address.isEmpty()) {
       throw new IllegalArgumentException("The address to join must not be empty.");
     }
-    handle = start(address);
+    handle = start(address, webRtc, ice == null ? "[]" : ice.toJson());
     state = FlixelNetTransportState.CONNECTING;
   }
 
@@ -166,7 +179,8 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
     if (connection != HOST || state != FlixelNetTransportState.CONNECTED) {
       return false;
     }
-    double waiting = waiting(handle);
+    int tag = channel == FlixelNetChannel.RELIABLE ? TAG_RELIABLE : TAG_UNRELIABLE;
+    double waiting = waiting(handle, tag);
     if (channel == FlixelNetChannel.UNRELIABLE && waiting > CONGESTED) {
       // Earlier packets are still waiting to leave. This one would be stale by the time its
       // turn came, so it is skipped, which is what "unreliable" allows.
@@ -180,11 +194,11 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
     }
     // The browser can only look at a Java buffer that lives in memory it can see, which a direct
     // buffer does. The view is made again on every send because that memory can be replaced.
-    outgoing.put(0, (byte) (channel == FlixelNetChannel.RELIABLE ? TAG_RELIABLE : TAG_UNRELIABLE));
+    outgoing.put(0, (byte) tag);
     for (int i = 0; i < length; i++) {
       outgoing.put(i + 1, data[offset + i]);
     }
-    sendBytes(handle, Int8Array.fromJavaBuffer(outgoing), length + 1);
+    sendBytes(handle, tag, Int8Array.fromJavaBuffer(outgoing), length + 1);
     return true;
   }
 
@@ -216,24 +230,123 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
   }
 
   @Override
+  public @NotNull String getRoute(int connection) {
+    return handle != 0 && usingWebRtc(handle) ? "WebRTC" : "WebSocket";
+  }
+
+  @Override
   public @NotNull FlixelNetTransportState getState() {
     return state;
   }
 
-  @JSBody(params = { "address" }, script = """
+  /**
+   * Returns the helper servers WebRTC may use to find a path to the host.
+   *
+   * @return The servers, or {@code null} for none.
+   */
+  @Nullable
+  public FlixelNetIceConfig getIce() {
+    return ice;
+  }
+
+  /**
+   * Sets the helper servers WebRTC may use to find a path to the host. Takes effect the next
+   * time {@link #connect(String)} is called.
+   *
+   * @param ice The servers, or {@code null} for none.
+   */
+  public void setIce(@Nullable FlixelNetIceConfig ice) {
+    this.ice = ice;
+  }
+
+  public boolean isWebRtc() {
+    return webRtc;
+  }
+
+  /**
+   * Sets whether to try WebRTC after the WebSocket opens. Takes effect the next time
+   * {@link #connect(String)} is called.
+   *
+   * @param webRtc {@code false} to stay on the WebSocket for good.
+   */
+  public void setWebRtc(boolean webRtc) {
+    this.webRtc = webRtc;
+  }
+
+  @JSBody(params = { "address", "useRtc", "ice" }, script = """
       var table = window.__flixelNet || (window.__flixelNet = { next: 1, all: {} });
       var id = table.next++;
-      var s = table.all[id] = { ws: null, up: false, done: false, events: [] };
+      var s = table.all[id] = {
+        ws: null, pc: null, r: null, u: null, up: false, done: false, rtcSend: false,
+        peerSwitched: false, timer: 0, events: [], held: []
+      };
       var url = address;
       if (url.indexOf('://') < 0) {
         url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + url;
+      }
+      function push(kind, bytes) {
+        s.events.push({ kind: kind, detail: bytes.length, data: bytes });
       }
       function finish(code) {
         if (s.done) { return; }
         s.done = true;
         var wasUp = s.up;
         s.up = false;
+        if (s.timer) { clearInterval(s.timer); s.timer = 0; }
+        if (s.pc) { try { s.pc.close(); } catch (e) {} }
         s.events.push({ kind: 2, detail: wasUp ? code : 1, data: null });
+      }
+      // A signal is a note to the host about setting up WebRTC. It is not game data.
+      function signal(kind, text) {
+        if (!s.ws || !s.up) { return; }
+        var body = new TextEncoder().encode(text);
+        var out = new Uint8Array(body.length + 2);
+        out[0] = 2;
+        out[1] = kind;
+        out.set(body, 2);
+        s.ws.send(out);
+      }
+      function startRtc() {
+        if (!useRtc || typeof RTCPeerConnection === 'undefined') { return; }
+        var pc;
+        try { pc = new RTCPeerConnection({ iceServers: JSON.parse(ice) }); } catch (e) { return; }
+        s.pc = pc;
+        // One channel that never loses anything, and one that never waits or resends.
+        var r = s.r = pc.createDataChannel('r');
+        var u = s.u = pc.createDataChannel('u', { ordered: false, maxRetransmits: 0 });
+        r.binaryType = 'arraybuffer';
+        u.binaryType = 'arraybuffer';
+        function ready() {
+          if (s.done || s.rtcSend || r.readyState !== 'open' || u.readyState !== 'open') { return; }
+          // Tell the host that reliable packets come over WebRTC from here on, so it can keep
+          // them in order with the ones still on their way over the WebSocket.
+          signal(4, '');
+          s.rtcSend = true;
+        }
+        r.onopen = ready;
+        u.onopen = ready;
+        r.onmessage = function(ev) {
+          if (s.done || typeof ev.data === 'string') { return; }
+          var bytes = new Int8Array(ev.data);
+          if (s.peerSwitched) { push(3, bytes); } else { s.held.push(bytes); }
+        };
+        u.onmessage = function(ev) {
+          if (s.done || typeof ev.data === 'string') { return; }
+          push(4, new Int8Array(ev.data));
+        };
+        pc.onicecandidate = function(ev) {
+          if (ev.candidate && ev.candidate.candidate) {
+            signal(3, (ev.candidate.sdpMid || '0') + '\n' + ev.candidate.candidate);
+          }
+        };
+        pc.onconnectionstatechange = function() {
+          if (s.rtcSend && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) { finish(2); }
+        };
+        pc.createOffer().then(function(offer) {
+          return pc.setLocalDescription(offer);
+        }).then(function() {
+          signal(1, pc.localDescription.sdp);
+        }).catch(function() {});
       }
       var ws;
       try { ws = new WebSocket(url); } catch (e) { finish(1); return id; }
@@ -243,6 +356,9 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
         if (s.done) { return; }
         s.up = true;
         s.events.push({ kind: 1, detail: 0, data: null });
+        startRtc();
+        // A quiet WebSocket can be cut off by anything in between, so say something now and then.
+        s.timer = setInterval(function() { signal(5, ''); }, 20000);
       };
       ws.onmessage = function(ev) {
         if (s.done || typeof ev.data === 'string') { return; }
@@ -250,14 +366,29 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
         if (bytes.length < 1) { return; }
         var tag = bytes[0];
         if (tag === 0 || tag === 1) {
-          s.events.push({ kind: tag === 0 ? 3 : 4, detail: bytes.length - 1, data: bytes.subarray(1) });
+          push(tag === 0 ? 3 : 4, bytes.subarray(1));
+          return;
+        }
+        if (tag !== 2 || bytes.length < 2) { return; }
+        var kind = bytes[1];
+        var text = new TextDecoder().decode(new Uint8Array(ev.data, 2));
+        if (kind === 2 && s.pc) {
+          s.pc.setRemoteDescription({ type: 'answer', sdp: text }).catch(function() {});
+        } else if (kind === 3 && s.pc) {
+          var split = text.indexOf('\n');
+          s.pc.addIceCandidate({ sdpMid: text.substring(0, split), candidate: text.substring(split + 1) })
+            .catch(function() {});
+        } else if (kind === 4) {
+          s.peerSwitched = true;
+          for (var i = 0; i < s.held.length; i++) { push(3, s.held[i]); }
+          s.held.length = 0;
         }
       };
       ws.onclose = function(ev) { finish(ev.wasClean ? 0 : 2); };
       ws.onerror = function() { finish(2); };
       return id;
       """)
-  private static native int start(String address);
+  private static native int start(String address, boolean useRtc, String ice);
 
   @JSBody(params = { "id" }, script = """
       var table = window.__flixelNet;
@@ -266,6 +397,9 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
       s.done = true;
       s.up = false;
       s.events.length = 0;
+      s.held.length = 0;
+      if (s.timer) { clearInterval(s.timer); s.timer = 0; }
+      if (s.pc) { try { s.pc.close(); } catch (e) {} }
       if (s.ws) { try { s.ws.close(1000); } catch (e) {} }
       delete table.all[id];
       """)
@@ -276,6 +410,8 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
       if (!s || s.done) { return; }
       s.done = true;
       s.up = false;
+      if (s.timer) { clearInterval(s.timer); s.timer = 0; }
+      if (s.pc) { try { s.pc.close(); } catch (e) {} }
       if (s.ws) { try { s.ws.close(1000); } catch (e) {} }
       s.events.push({ kind: 2, detail: 3, data: null });
       """)
@@ -300,14 +436,31 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
   private static native void popEvent(int id);
 
   @JSBody(params = { "id" }, script = """
-      var s = window.__flixelNet.all[id];
-      return (s && s.ws) ? s.ws.bufferedAmount : 0;
+      var table = window.__flixelNet;
+      var s = table && table.all[id];
+      return !!(s && s.rtcSend);
       """)
-  private static native double waiting(int id);
+  private static native boolean usingWebRtc(int id);
 
-  @JSBody(params = { "id", "data", "length" }, script = """
+  @JSBody(params = { "id", "tag" }, script = """
       var s = window.__flixelNet.all[id];
-      if (s && s.ws && s.up) { s.ws.send(data.subarray(0, length)); }
+      if (!s) { return 0; }
+      if (s.rtcSend) { return (tag === 0 ? s.r : s.u).bufferedAmount; }
+      return s.ws ? s.ws.bufferedAmount : 0;
       """)
-  private static native void sendBytes(int id, Int8Array data, int length);
+  private static native double waiting(int id, int tag);
+
+  @JSBody(params = { "id", "tag", "data", "length" }, script = """
+      var s = window.__flixelNet.all[id];
+      if (!s || !s.up) { return; }
+      if (s.rtcSend) {
+        var channel = tag === 0 ? s.r : s.u;
+        // Over WebRTC the channel itself says which kind of packet this is, so the first byte,
+        // which says it on a WebSocket, is left off.
+        if (channel.readyState === 'open') { channel.send(data.subarray(1, length)); }
+        return;
+      }
+      if (s.ws) { s.ws.send(data.subarray(0, length)); }
+      """)
+  private static native void sendBytes(int id, int tag, Int8Array data, int length);
 }

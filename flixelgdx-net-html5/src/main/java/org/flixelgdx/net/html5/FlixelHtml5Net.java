@@ -61,6 +61,8 @@ public final class FlixelHtml5Net implements FlixelNetTransportFactory {
 
   @Override
   public @NotNull FlixelNetTransport newWebTransport() {
-    return new FlixelHtml5WebTransport();
+    FlixelHtml5WebTransport transport = new FlixelHtml5WebTransport();
+    transport.setIce(FlixelNet.getIce());
+    return transport;
   }
 }

@@ -1,0 +1,4 @@
+# The exact versions of the third-party code the native WebRTC library is built from.
+# Changing a line here and pushing rebuilds the library for every platform.
+LIBDATACHANNEL_VERSION=v0.24.6
+MBEDTLS_VERSION=3.6.5

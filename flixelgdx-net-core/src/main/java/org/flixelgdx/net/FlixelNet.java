@@ -25,6 +25,7 @@ package org.flixelgdx.net;
 
 import org.flixelgdx.Flixel;
 import org.flixelgdx.collections.FlixelArray;
+import org.flixelgdx.net.transport.FlixelNetIceConfig;
 import org.flixelgdx.net.transport.FlixelNetLoopback;
 import org.flixelgdx.net.transport.FlixelNetTransport;
 import org.flixelgdx.net.transport.FlixelNetTransportFactory;
@@ -64,6 +65,8 @@ public final class FlixelNet {
   @SuppressWarnings("checkstyle:ConstantName")
   private static final FlixelArray<FlixelNetSession> attached = new FlixelArray<>();
   private static final SignalHandler<UpdateSignalData> UPDATER = FlixelNet::update;
+  @SuppressWarnings("checkstyle:ConstantName")
+  private static final FlixelNetIceConfig ice = new FlixelNetIceConfig();
   private static long lastNanos;
   private static FlixelNetTransportFactory factory;
 
@@ -178,6 +181,19 @@ public final class FlixelNet {
     if (attached.removeValue(session, true) && attached.isEmpty()) {
       Flixel.Signals.preUpdate.remove(UPDATER);
     }
+  }
+
+  /**
+   * Returns the helper servers that WebRTC connections made through this class may use.
+   *
+   * <p>Add servers to it before hosting or joining. It starts out empty, which is enough on a
+   * local network and for a host with a public address.
+   *
+   * @return The shared configuration.
+   */
+  @NotNull
+  public static FlixelNetIceConfig getIce() {
+    return ice;
   }
 
   /**

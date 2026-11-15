@@ -1,0 +1,239 @@
+name: Build Natives
+
+# Builds the native WebRTC library for every supported operating system and processor. Nothing is
+# committed: each library is uploaded as a workflow artifact, and a final job bundles them all
+# into one artifact laid out exactly like the repository, so release jobs and people can drop it
+# straight into a checkout. The versions of the third-party code come from scripts/natives.versions.
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'native/**'
+      - 'scripts/natives.versions'
+      - 'scripts/build_natives.sh'
+      - '.github/workflows/natives.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: WebRTC (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    # Building inside manylinux_2_28 (AlmaLinux 8, glibc 2.28) keeps the library loadable on every
+    # mainstream distribution released since 2018, not only on the runner's much newer glibc.
+    container: quay.io/pypa/manylinux_2_28_${{ matrix.arch }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-24.04
+            arch: x86_64
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            arch: aarch64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        # The JDK is only needed for its JNI header. CMake and Ninja come from the image's Python.
+        run: |
+          dnf install -y git bzip2 java-17-openjdk-devel
+          /opt/python/cp312-cp312/bin/python -m pip install cmake ninja
+          echo "/opt/python/cp312-cp312/bin" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          git config --global --add safe.directory '*'
+          ./scripts/build_natives.sh ${{ matrix.target }}
+
+      - name: Check that the library loads and connects
+        run: |
+          lib="flixelgdx-net-natives/${{ matrix.target }}/src/main/resources/natives/${{ matrix.target }}"
+          mkdir -p smoke
+          javac -d smoke flixelgdx-net-jvm/src/main/java/org/flixelgdx/net/jvm/FlixelJvmRtc.java \
+            native/smoke/RtcSmoke.java
+          java -cp smoke -Dflixel.net.rtc.library="$PWD/$lib/libflixelnetrtc.so" RtcSmoke
+
+      - name: Upload the library
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtc-${{ matrix.target }}
+          path: flixelgdx-net-natives/${{ matrix.target }}/src/main/resources/natives/${{ matrix.target }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  desktop:
+    name: WebRTC (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x86_64
+            os: windows-latest
+            msvc_arch: x64
+            library: flixelnetrtc.dll
+          - target: windows-aarch64
+            os: windows-11-arm
+            msvc_arch: arm64
+            library: flixelnetrtc.dll
+          - target: macos-x86_64
+            os: macos-15-intel
+            library: libflixelnetrtc.dylib
+          - target: macos-aarch64
+            os: macos-latest
+            library: libflixelnetrtc.dylib
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        # Needed for the JNI header and to run the load check.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ninja
+        run: python -m pip install ninja
+
+      - name: Set up the MSVC toolchain
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Prepare Windows git and PATH
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.longpaths true
+          # Git Bash ships a GNU link.exe that would shadow the MSVC linker.
+          rm -f /usr/bin/link.exe /usr/bin/link
+
+      - name: Build
+        env:
+          # Windows paths are limited to 260 characters, so keep the build root short there.
+          FLIXELNET_NATIVE_CACHE: ${{ runner.os == 'Windows' && 'C:/fxnet' || '' }}
+        run: ./scripts/build_natives.sh ${{ matrix.target }}
+
+      - name: Check that the library loads and connects
+        run: |
+          lib="flixelgdx-net-natives/${{ matrix.target }}/src/main/resources/natives/${{ matrix.target }}"
+          mkdir -p smoke
+          javac -d smoke flixelgdx-net-jvm/src/main/java/org/flixelgdx/net/jvm/FlixelJvmRtc.java \
+            native/smoke/RtcSmoke.java
+          java -cp smoke "-Dflixel.net.rtc.library=$PWD/$lib/${{ matrix.library }}" RtcSmoke
+
+      - name: Upload the library
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtc-${{ matrix.target }}
+          path: flixelgdx-net-natives/${{ matrix.target }}/src/main/resources/natives/${{ matrix.target }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    name: WebRTC (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: android-arm64-v8a
+            abi: arm64-v8a
+          - target: android-armeabi-v7a
+            abi: armeabi-v7a
+          - target: android-x86_64
+            abi: x86_64
+          - target: android-x86
+            abi: x86
+    env:
+      FLIXELNET_ANDROID_API: '26'
+      NDK_VERSION: '28.2.13676358'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ninja
+        run: python -m pip install ninja
+
+      - name: Install the Android NDK
+        # The runner image ships the Android SDK. Pin the NDK so every build uses the same compiler.
+        run: |
+          # "yes" is killed by a broken pipe once sdkmanager stops reading, which pipefail would
+          # treat as a failure, so its exit status is ignored.
+          (yes || true) | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
+          echo "FLIXELNET_ANDROID_NDK=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build
+        # An Android library cannot be run on the build machine, so there is no load check here.
+        run: ./scripts/build_natives.sh ${{ matrix.target }}
+
+      - name: Upload the library
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtc-${{ matrix.target }}
+          path: flixelgdx-net-android/src/main/jniLibs/${{ matrix.abi }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  bundle:
+    name: Bundle all natives
+    needs: [linux, desktop, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download every library
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rtc-*
+          path: artifacts
+
+      - name: Lay them out like the repository
+        run: |
+          mkdir -p bundle
+          for dir in artifacts/rtc-*; do
+            target="${dir#artifacts/rtc-}"
+            case "${target}" in
+              android-*) dest="bundle/flixelgdx-net-android/src/main/jniLibs/${target#android-}" ;;
+              *) dest="bundle/flixelgdx-net-natives/${target}/src/main/resources/natives/${target}" ;;
+            esac
+            mkdir -p "${dest}"
+            cp -r "${dir}/." "${dest}/"
+          done
+          find bundle -type f -exec ls -l {} \;
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtc-natives-all
+          path: bundle/
+          if-no-files-found: error
+          retention-days: 30
