@@ -336,7 +336,7 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
         };
         pc.onicecandidate = function(ev) {
           if (ev.candidate && ev.candidate.candidate) {
-            signal(3, (ev.candidate.sdpMid || '0') + '\n' + ev.candidate.candidate);
+            signal(3, (ev.candidate.sdpMid || '0') + String.fromCharCode(10) + ev.candidate.candidate);
           }
         };
         pc.onconnectionstatechange = function() {
@@ -375,7 +375,7 @@ public final class FlixelHtml5WebTransport implements FlixelNetTransport {
         if (kind === 2 && s.pc) {
           s.pc.setRemoteDescription({ type: 'answer', sdp: text }).catch(function() {});
         } else if (kind === 3 && s.pc) {
-          var split = text.indexOf('\n');
+          var split = text.indexOf(String.fromCharCode(10));
           s.pc.addIceCandidate({ sdpMid: text.substring(0, split), candidate: text.substring(split + 1) })
             .catch(function() {});
         } else if (kind === 4) {
