@@ -53,6 +53,7 @@ include("flixelgdx-net-processor")
 include("flixelgdx-net-jvm")
 include("flixelgdx-net-html5")
 include("flixelgdx-net-server")
+include("flixelgdx-net-rollback")
 
 // One jar per desktop platform holding the native WebRTC library. The library of a platform is
 // never committed, so a fresh checkout has no folder for it, and Gradle refuses a project without
