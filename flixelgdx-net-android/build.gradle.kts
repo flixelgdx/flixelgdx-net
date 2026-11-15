@@ -22,6 +22,22 @@ android {
   }
 }
 
+// The native libraries come with a licenses.txt that lists the third-party software inside them.
+// It sits next to each library, where the Android plugin ignores it, so it is copied into the
+// library's Java resources to travel with the published artifact.
+val nativeLicenses = tasks.register<Copy>("nativeLicenses") {
+  from("src/main/jniLibs/arm64-v8a") {
+    include("licenses.txt")
+  }
+  into(layout.buildDirectory.dir("generated/nativeLicenses/META-INF/flixelgdx-net"))
+}
+
+android.sourceSets.getByName("main").resources.srcDir(layout.buildDirectory.dir("generated/nativeLicenses"))
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+  dependsOn(nativeLicenses)
+}
+
 dependencies {
   api(project(":flixelgdx-net-jvm"))
   implementation(libs.jetbrains.annotations)
