@@ -29,3 +29,4 @@ dependencyResolutionManagement {
 rootProject.name = "flixelgdx-net"
 
 include("flixelgdx-net-core")
+include("flixelgdx-net-processor")
