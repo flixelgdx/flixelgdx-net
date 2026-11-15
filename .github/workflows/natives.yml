@@ -101,12 +101,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (Temurin)
-        # Needed for the JNI header and to run the load check.
+      - name: Set up JDK 21 (Temurin)
+        # Needed for the JNI header and to run the load check. Temurin has no JDK 17 for Windows on ARM.
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Set up Python
         uses: actions/setup-python@v5
