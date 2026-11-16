@@ -63,10 +63,11 @@ assumes no networking experience.
 
 | Page | |
 | --- | --- |
-| [Getting started](handbook/getting-started.md) | Modules, sessions and messages. |
+| [Networking basics](handbook/networking-basics.md) | Addresses, ports, UDP, WebSocket and WebRTC, lag. No code. |
+| [Getting started](handbook/getting-started.md) | Modules, sessions and messages, with a complete example. |
 | [Hosting and joining](handbook/hosting-and-joining.md) | UDP, WebSocket and WebRTC; routers, STUN and TURN. |
 | [Replication](handbook/replication.md) | Entities, pawns, smoothing and prediction. |
-| [Dedicated servers](handbook/dedicated-server.md) | Running the game with no window. |
+| [Dedicated servers](handbook/dedicated-server.md) | Running the game with no window, and putting it on a rented server. |
 | [Rollback](handbook/rollback.md) | Deterministic multiplayer where only controls travel. |
 | [Native libraries and licenses](handbook/natives-and-licenses.md) | The WebRTC library and what to ship. |
 
