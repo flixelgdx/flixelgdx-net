@@ -1,6 +1,13 @@
 # 6. Native libraries and licenses
 
-## What the native library is
+## What a native library is
+
+Most of FlixelGDX Net is Java, which runs anywhere a Java runtime does. A **native library** is different: it is
+code compiled directly for one operating system and one kind of processor, like a `.dll` on Windows, a `.so` on
+Linux and Android, or a `.dylib` on macOS. Java can load and call one, but it needs the right file for the
+computer it is running on. That is why there is one small jar per platform.
+
+## What this native library is for
 
 Browsers have WebRTC built in. A desktop, Android or dedicated host needs it too, so it can accept browser
 players on the fast road (see [Hosting and joining](hosting-and-joining.md)). That part comes from a small native
@@ -28,8 +35,34 @@ The library is **optional**. Without it everything still works, and browser play
 | Android (all four CPU types) | Included in `flixelgdx-net-android` |
 | Web | Nothing; the browser provides it |
 
-Add the ones for the platforms you ship to as `runtimeOnly` dependencies of your desktop or server module. Each
-is a small jar, and only the one matching the computer the game runs on is ever loaded.
+Add the ones for the platforms you ship to as `runtimeOnly` dependencies of your desktop or server module:
+
+```kotlin
+// desktop/build.gradle.kts
+dependencies {
+  runtimeOnly("org.flixelgdx:flixelgdx-net-natives-windows-x86_64:0.0.0")
+  runtimeOnly("org.flixelgdx:flixelgdx-net-natives-macos-aarch64:0.0.0")
+  runtimeOnly("org.flixelgdx:flixelgdx-net-natives-linux-x86_64:0.0.0")
+}
+```
+
+Each is a small jar, and only the one matching the computer the game runs on is ever loaded. "x86_64" means the
+common 64-bit Intel and AMD processors; "aarch64" means 64-bit ARM processors, such as Apple silicon Macs and
+Windows on ARM laptops.
+
+Java prints a warning when a program loads native code without permission. Add
+`--enable-native-access=ALL-UNNAMED` to your game's JVM arguments to allow it quietly.
+
+## Checking that it works
+
+```java
+if (!FlixelJvmRtc.isAvailable()) {
+  Flixel.info("WebRTC is off: " + FlixelJvmRtc.getProblem());
+}
+```
+
+The quickest real test: host on desktop, join from a browser with `ws://`, and look at `peer.getRoute()` on the
+host. It says `"WebRTC"` once the upgrade worked, and stays `"WebSocket"` if it did not.
 
 ## What this means for your game's license
 
@@ -40,8 +73,8 @@ contains the projects above, under their own licenses. In plain terms:
   source files, not programs that use the library. You can keep your game closed-source or license it however
   you like.
 - **Ship the license notices.** Each natives jar contains a `licenses.txt` with the full text of every license
-  involved (in the Android library it is at `META-INF/flixelgdx-net/licenses.txt`). Keep it in your packaged game, or copy its contents into your credits or "third-party licenses"
-  screen.
+  involved (in the Android library it is at `META-INF/flixelgdx-net/licenses.txt`). Keep it in your packaged
+  game, or copy its contents into your credits or "third-party licenses" screen.
 - **Say where the source is.** The MPL-2.0 asks that people who receive the library can find its source. The
   libraries are built from unmodified, tagged upstream releases; the exact versions are pinned in
   [`scripts/natives.versions`](../scripts/natives.versions), and `licenses.txt` names them too. Pointing at that
@@ -50,20 +83,15 @@ contains the projects above, under their own licenses. In plain terms:
 This is a plain-language summary, not legal advice. For a commercial release, have someone qualified read the
 licenses themselves.
 
-## Where the binaries come from
+## Where the files come from
 
 The libraries are never committed to the repository or built on a contributor's computer. The
 [Build Natives](../.github/workflows/natives.yml) workflow builds each one from source on a GitHub-hosted
 machine of the matching kind, for all ten targets, and checks that each one loads.
 
-To work on the extension itself with WebRTC enabled, download the `rtc-natives-all` artifact from the latest
-successful run of that workflow and unpack it into the root of the checkout. It is laid out exactly like the
-repository, so every file lands in place. With the GitHub CLI, find the run's number with
-`gh run list --workflow natives.yml` and then:
-
-```bash
-gh run download RUN_ID --name rtc-natives-all --dir .
-```
+A game normally gets them from Maven Central with the jars above, and never needs to think about this. To work
+on the extension itself with WebRTC enabled, see
+[Getting the native WebRTC library](../COMPILING.md#getting-the-native-webrtc-library) in COMPILING.md.
 
 ## Using a library you built yourself
 

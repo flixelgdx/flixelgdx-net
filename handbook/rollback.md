@@ -1,20 +1,24 @@
 # 5. Rollback
 
+On this page you build a tiny two-player race, using the other way to do real-time multiplayer: every computer
+runs the whole game, and only the players' controls travel.
+
 ## The idea
 
-Imagine two people playing chess by mail who each keep their own board. Nobody mails the board. They only mail
+Imagine two people playing chess by mail, each with their own board. Nobody mails the board. They only mail their
 moves, and because both follow the same rules, both boards stay identical.
 
 Rollback multiplayer does that sixty times a second. Every computer runs the **whole game**, and only the
-players' **controls** travel over the network.
+players' **controls** go over the network.
 
-Mail is never instant, though, and a game cannot freeze while it waits. So each computer *guesses* that the
-other players are still doing what they did a moment ago, and carries on. Most of the time the guess is right,
+Mail is never instant, though, and a game cannot freeze while it waits. So each computer *guesses* that the other
+players are still pressing what they pressed a moment ago, and carries on. Most of the time the guess is right,
 because people hold a direction for many frames in a row. When the real controls arrive and the guess was wrong,
 the game quietly **rewinds** to that moment, plays those few ticks again with the right controls, and is back in
 the present before the next picture is drawn. That rewind is the rollback.
 
-The payoff: your own controls respond instantly, always, no matter the lag. That is why fighting games use it.
+The payoff: your own controls respond instantly, always, however far away the other player is. That is why
+fighting games use it.
 
 ## Is it right for my game?
 
@@ -31,54 +35,141 @@ Choose rollback for fast games with few players where every frame of response ma
 
 ## What your game must provide
 
-The part of your game that decides what happens (positions, health, timers) is the **simulation**. Drawing,
-sound and menus are not part of it; they only look at the simulation after each update. The simulation
-implements four methods:
+The part of your game that decides what happens (positions, scores, timers) is the **simulation**. Drawing,
+sound and menus are not part of it; they only look at the simulation after each update. The simulation is a
+class implementing `FlixelRollbackGame`, which has four methods:
+
+| Method | Question it answers | Called |
+| --- | --- | --- |
+| `sample` | "What are this computer's controls doing right now?" | Once per tick, for the local player only. |
+| `step` | "Move the whole game one tick, using everyone's controls." | Once per tick, and again for every tick replayed by a rewind. |
+| `save` | "Write down everything `step` can change." | Before ticks that might be rewound. |
+| `load` | "Put everything back the way `save` wrote it." | When rewinding. |
+
+## Step 1: the input message
+
+Controls are a `@NetMessage` like any other, and must be in the protocol along with the rollback session's own
+message:
 
 ```java
-@NetMessage
-public class Pad {
-  public boolean left, right, jump;
+public final class Messages {
+
+  private Messages() {}
+
+  public static FlixelNetProtocol protocol() {
+    FlixelNetProtocol protocol = new FlixelNetProtocol("coin-race", 1)
+      .add(MessagesPadNetCodec.INSTANCE);
+    FlixelRollbackSession.addMessages(protocol);
+    return protocol;
+  }
+
+  /** One player's controls for one tick. */
+  @NetMessage
+  public static class Pad {
+    public boolean left;
+    public boolean right;
+    public boolean up;
+    public boolean down;
+  }
 }
+```
 
-public class Duel implements FlixelRollbackGame<Pad> {
+Keep inputs small: they are sent every tick, and a few booleans pack into a single byte.
 
-  public final float[] x = new float[2];
-  public final int[] health = { 100, 100 };
+## Step 2: the simulation
 
-  @Override
-  public void sample(Pad out) {                    // Read this player's controls.
-    out.left = leftIsHeld();
-    out.right = rightIsHeld();
-    out.jump = jumpIsHeld();
+Two squares race to touch a coin. Whoever touches it scores, and the coin jumps somewhere else.
+
+```java
+public class CoinRace implements FlixelRollbackGame<Messages.Pad> {
+
+  public static final int SIZE = 32;
+  public static final int COIN = 16;
+  private static final int SPEED = 5;   // Pixels per tick. Never "speed * elapsed".
+
+  public final int[] x = { 200, 1000 };
+  public final int[] y = { 360, 360 };
+  public final int[] score = new int[2];
+  public int coinX = 632;
+  public int coinY = 352;
+
+  private FlixelRollbackRandom random;
+
+  /** Gives the simulation the match's random numbers. Call once, before the match starts. */
+  public void setRandom(FlixelRollbackRandom random) {
+    this.random = random;
   }
 
   @Override
-  public void step(FlixelRollbackInputs<Pad> inputs) {   // One tick, for everyone.
+  public void sample(Messages.Pad out) {
+    out.left = Flixel.keys.pressed(FlixelKey.LEFT);
+    out.right = Flixel.keys.pressed(FlixelKey.RIGHT);
+    out.up = Flixel.keys.pressed(FlixelKey.UP);
+    out.down = Flixel.keys.pressed(FlixelKey.DOWN);
+  }
+
+  @Override
+  public void step(FlixelRollbackInputs<Messages.Pad> inputs) {
     for (int p = 0; p < inputs.getCount(); p++) {
-      Pad pad = inputs.get(p);
-      if (pad.left) { x[p] -= 4; }
-      if (pad.right) { x[p] += 4; }
+      Messages.Pad pad = inputs.get(p);
+      if (pad.left) {
+        x[p] -= SPEED;
+      }
+      if (pad.right) {
+        x[p] += SPEED;
+      }
+      if (pad.up) {
+        y[p] -= SPEED;
+      }
+      if (pad.down) {
+        y[p] += SPEED;
+      }
+      x[p] = Math.max(0, Math.min(1280 - SIZE, x[p]));
+      y[p] = Math.max(0, Math.min(720 - SIZE, y[p]));
+    }
+    // Players are checked in a fixed order, so a tie goes the same way on every computer.
+    for (int p = 0; p < inputs.getCount(); p++) {
+      boolean touching = x[p] < coinX + COIN && x[p] + SIZE > coinX && y[p] < coinY + COIN && y[p] + SIZE > coinY;
+      if (touching) {
+        score[p]++;
+        coinX = random.nextInt(1280 - COIN);
+        coinY = random.nextInt(720 - COIN);
+      }
     }
   }
 
   @Override
-  public void save(FlixelNetBuffer out) {          // Everything step() can change...
-    out.writeFloat(x[0]);
-    out.writeFloat(x[1]);
-    out.writeVarInt(health[0]);
-    out.writeVarInt(health[1]);
+  public void save(FlixelNetBuffer out) {
+    for (int p = 0; p < 2; p++) {
+      out.writeVarInt(x[p]);
+      out.writeVarInt(y[p]);
+      out.writeVarInt(score[p]);
+    }
+    out.writeVarInt(coinX);
+    out.writeVarInt(coinY);
   }
 
   @Override
-  public void load(FlixelNetBuffer in) {           // ...read back in the same order.
-    x[0] = in.readFloat();
-    x[1] = in.readFloat();
-    health[0] = in.readVarInt();
-    health[1] = in.readVarInt();
+  public void load(FlixelNetBuffer in) {
+    for (int p = 0; p < 2; p++) {
+      x[p] = in.readVarInt();
+      y[p] = in.readVarInt();
+      score[p] = in.readVarInt();
+    }
+    coinX = in.readVarInt();
+    coinY = in.readVarInt();
   }
 }
 ```
+
+Things to notice:
+
+- **Whole numbers and fixed steps.** Positions are `int`s moved by 5 pixels per tick, never by `elapsed`. Every
+  computer gets exactly the same numbers.
+- **The match's own random numbers.** `random` is handed over by the rollback session (step 3). It gives every player
+  the same numbers, and the session saves and restores it with each rewind for you, so it never appears in `save`.
+- **`save` and `load` mirror each other.** Same values, same order.
+- **No drawing and no sound.** The game state draws after each update, in step 4.
 
 ## The golden rule: determinism
 
@@ -100,27 +191,110 @@ In practice:
 - **Loop in a fixed order.** Go through players and objects by index, never through a collection whose order
   can differ between computers.
 
-## Running a match
+## Step 3: the match
+
+A rollback session runs on top of an ordinary network session:
 
 ```java
-FlixelNetProtocol protocol = new FlixelNetProtocol("my-game", 1).add(PadNetCodec.INSTANCE);
-FlixelRollbackSession.addMessages(protocol);
-FlixelNetSession session = new FlixelNetSession(protocol);
-
-Duel duel = new Duel();
-FlixelRollbackSession<Pad> match = new FlixelRollbackSession<>(session, Pad.class, duel);
-
-// Host or join exactly as before. Then, on the host, once everyone is in:
-match.start();
-
-// Every frame, on every computer:
-session.update(elapsed);
-match.update(elapsed);
-drawFrom(duel);     // Show the simulation as it is now.
+FlixelNetSession session = new FlixelNetSession(Messages.protocol());
+CoinRace race = new CoinRace();
+FlixelRollbackSession<Messages.Pad> match = new FlixelRollbackSession<>(session, Messages.Pad.class, race);
+race.setRandom(match.getRandom());   // The simulation's random numbers come from the match.
 ```
 
-The host is player 0 and the others are numbered in the order they joined. `match.getLocalPlayer()` tells each
-computer which one it is, and `match.onStart` fires when the match begins.
+Then host or join exactly as on the earlier pages. The host is player 0, and the others are numbered in the order
+they joined. `match.getLocalPlayer()` tells each computer which one it is.
+
+## Step 4: the game state
+
+```java
+public class RaceState extends FlixelState {
+
+  private final boolean hosting;
+  private final String address;
+  private final FlixelSprite[] squares = new FlixelSprite[2];
+  private FlixelSprite coin;
+  private FlixelNetSession session;
+  private FlixelRollbackSession<Messages.Pad> match;
+  private CoinRace race;
+
+  public RaceState(boolean hosting, String address) {
+    this.hosting = hosting;
+    this.address = address;
+  }
+
+  @Override
+  public void create() {
+    super.create();
+    squares[0] = box(CoinRace.SIZE, new FlixelColor(240, 120, 90, 1f));
+    squares[1] = box(CoinRace.SIZE, new FlixelColor(90, 190, 240, 1f));
+    coin = box(CoinRace.COIN, new FlixelColor(250, 215, 70, 1f));
+
+    session = new FlixelNetSession(Messages.protocol());
+    race = new CoinRace();
+    match = new FlixelRollbackSession<>(session, Messages.Pad.class, race);
+    race.setRandom(match.getRandom());
+
+    match.onStart.add(_ -> Flixel.info("Go! You are player " + match.getLocalPlayer()));
+    match.onDesync.add(tick -> Flixel.info("The computers disagree at tick " + tick));
+    match.onPlayerLeft.add(player -> Flixel.info("Player " + player + " left"));
+    match.onEnd.add(_ -> Flixel.info("The host left; the match is over"));
+
+    if (hosting) {
+      // Start the match as soon as the second player is in. Anyone joining later is not part of it.
+      session.onConnect.add(peer -> {
+        if (!match.isRunning()) {
+          match.start();
+        }
+      });
+      FlixelNet.host(session, 7777);
+    } else {
+      FlixelNet.join(session, address);
+    }
+  }
+
+  @Override
+  public void update(float elapsed) {
+    super.update(elapsed);
+    session.update(elapsed);
+    match.update(elapsed);    // Runs as many ticks as are due, rewinding when needed.
+
+    // Drawing only looks at the simulation; it never changes it.
+    boolean running = match.isRunning();
+    for (int p = 0; p < 2; p++) {
+      squares[p].setVisible(running);
+      squares[p].setPosition(race.x[p], race.y[p]);
+    }
+    coin.setVisible(running);
+    coin.setPosition(race.coinX, race.coinY);
+  }
+
+  @Override
+  public void destroy() {
+    match.destroy();
+    session.close();
+    super.destroy();
+  }
+
+  private FlixelSprite box(int size, FlixelColor color) {
+    FlixelSprite sprite = new FlixelSprite();
+    sprite.makeGraphic(size, size, color);
+    sprite.setVisible(false);
+    add(sprite);
+    return sprite;
+  }
+}
+```
+
+Update the match right after the session, every frame, and draw from the simulation afterwards. Run it like the
+arena: one window hosts, another joins `127.0.0.1:7777`, and the race starts the moment the second player arrives.
+
+### Starting a match
+
+Only the host calls `match.start()`, and only once everyone is in: anyone who joins later is not part of that
+match. Here it starts as soon as one player joins; a real game would wait for a "Start" button. `start()` sends
+the tick rate, input delay, prediction limit and a shared random seed to every player, so they only need to be
+set on the host.
 
 ## Tuning
 
@@ -161,5 +335,16 @@ than once per frame. Keep them small and free of allocations: plain fields, arra
 
 The controls are relayed through the host, so players never need to reach each other directly, and the match
 works over every kind of connection the extension has, the web included.
+
+## Common mistakes
+
+| Symptom | Cause |
+| --- | --- |
+| `onDesync` fires, and the screens slowly disagree | `step` broke the golden rule: it used `elapsed`, another random source, or changed a value `save` does not write. |
+| `onDesync` right after a coin is picked up | The random numbers did not come from `match.getRandom()`. |
+| Nothing moves | `match.update(elapsed)` is not called, or the host never called `match.start()`. |
+| `IllegalStateException` from `start()` | It was called on a client, before anyone joined, or twice. |
+| Joining fails with `VERSION_MISMATCH` | `FlixelRollbackSession.addMessages(protocol)` was called on one side only. |
+| The game slows down when one player lags badly | That is a stall: a computer that gets too far ahead waits for the slowest one, on purpose. Raise the input delay, or accept it. |
 
 Next: [Native libraries and licenses](natives-and-licenses.md)
