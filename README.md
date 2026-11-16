@@ -58,17 +58,17 @@ session.send(line, FlixelNetChannel.RELIABLE);
 
 ## Documentation
 
-The **[handbook](docs/README.md)** walks through everything from the first message to dedicated servers, and
+The **[handbook](handbook/README.md)** walks through everything from the first message to dedicated servers, and
 assumes no networking experience.
 
 | Page | |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Modules, sessions and messages. |
-| [Hosting and joining](docs/hosting-and-joining.md) | UDP, WebSocket and WebRTC; routers, STUN and TURN. |
-| [Replication](docs/replication.md) | Entities, pawns, smoothing and prediction. |
-| [Dedicated servers](docs/dedicated-server.md) | Running the game with no window. |
-| [Rollback](docs/rollback.md) | Deterministic multiplayer where only controls travel. |
-| [Native libraries and licenses](docs/natives-and-licenses.md) | The WebRTC library and what to ship. |
+| [Getting started](handbook/getting-started.md) | Modules, sessions and messages. |
+| [Hosting and joining](handbook/hosting-and-joining.md) | UDP, WebSocket and WebRTC; routers, STUN and TURN. |
+| [Replication](handbook/replication.md) | Entities, pawns, smoothing and prediction. |
+| [Dedicated servers](handbook/dedicated-server.md) | Running the game with no window. |
+| [Rollback](handbook/rollback.md) | Deterministic multiplayer where only controls travel. |
+| [Native libraries and licenses](handbook/natives-and-licenses.md) | The WebRTC library and what to ship. |
 
 ## Modules
 
@@ -94,10 +94,10 @@ is recommended). FlixelGDX itself is pulled from Maven Central.
 
 The Android module is only built when an Android SDK is configured; copy `example.local.properties` to
 `local.properties` and fill it in. The native WebRTC libraries are built by a GitHub workflow, not locally; see
-[Native libraries and licenses](docs/natives-and-licenses.md).
+[Native libraries and licenses](handbook/natives-and-licenses.md).
 
 ## License
 
 FlixelGDX Net is released under the [MIT License](LICENSE). The optional native WebRTC library contains
 third-party software under its own licenses; see
-[Native libraries and licenses](docs/natives-and-licenses.md).
+[Native libraries and licenses](handbook/natives-and-licenses.md).
