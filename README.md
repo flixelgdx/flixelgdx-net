@@ -96,6 +96,12 @@ The Android module is only built when an Android SDK is configured; copy `exampl
 `local.properties` and fill it in. The native WebRTC libraries are built by a GitHub workflow, not locally; see
 [Native libraries and licenses](handbook/natives-and-licenses.md).
 
+## Contributing
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then
+[ARCHITECTURE.md](ARCHITECTURE.md) for how the extension is put together and [COMPILING.md](COMPILING.md) for how
+to build and test it.
+
 ## License
 
 FlixelGDX Net is released under the [MIT License](LICENSE). The optional native WebRTC library contains
