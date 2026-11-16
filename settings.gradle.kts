@@ -55,16 +55,16 @@ include("flixelgdx-net-html5")
 include("flixelgdx-net-server")
 include("flixelgdx-net-rollback")
 
-// One jar per desktop platform holding the native WebRTC library. The library of a platform is
-// never committed, so a fresh checkout has no folder for it, and Gradle refuses a project without
-// one; the folder is created here.
-val nativeTargets = listOf(
-  "linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64", "macos-x86_64", "macos-aarch64"
+// One jar per desktop platform holding the native WebRTC library. They are grouped under the
+// flixelgdx-net-natives folder, so their paths are :flixelgdx-net-natives:flixelgdx-net-natives-<target>.
+include(
+  ":flixelgdx-net-natives:flixelgdx-net-natives-linux-x86_64",
+  ":flixelgdx-net-natives:flixelgdx-net-natives-linux-aarch64",
+  ":flixelgdx-net-natives:flixelgdx-net-natives-windows-x86_64",
+  ":flixelgdx-net-natives:flixelgdx-net-natives-windows-aarch64",
+  ":flixelgdx-net-natives:flixelgdx-net-natives-macos-x86_64",
+  ":flixelgdx-net-natives:flixelgdx-net-natives-macos-aarch64"
 )
-for (target in nativeTargets) {
-  include("flixelgdx-net-natives-$target")
-  project(":flixelgdx-net-natives-$target").projectDir = file("flixelgdx-net-natives/$target").also { it.mkdirs() }
-}
 
 if (includeAndroid) {
   include("flixelgdx-net-android")

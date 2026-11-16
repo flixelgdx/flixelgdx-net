@@ -14,7 +14,7 @@
 # Android NDK.
 #
 # The result lands where the Gradle build expects it:
-#   desktop: flixelgdx-net-natives/<target>/src/main/resources/natives/<target>/
+#   desktop: flixelgdx-net-natives/flixelgdx-net-natives-<target>/src/main/resources/natives/<target>/
 #   Android: flixelgdx-net-android/src/main/jniLibs/<abi>/
 # Nothing built here is ever committed.
 
@@ -67,20 +67,20 @@ ARGS=(-S "${ROOT}/native" -B "${BUILD}" -G Ninja -DCMAKE_BUILD_TYPE=Release "-DF
 case "${TARGET}" in
   linux-x86_64 | linux-aarch64)
     LIBRARY="libflixelnetrtc.so"
-    DEST="${ROOT}/flixelgdx-net-natives/${TARGET}/src/main/resources/natives/${TARGET}"
+    DEST="${ROOT}/flixelgdx-net-natives/flixelgdx-net-natives-${TARGET}/src/main/resources/natives/${TARGET}"
     ;;
   windows-x86_64 | windows-aarch64)
     LIBRARY="flixelnetrtc.dll"
-    DEST="${ROOT}/flixelgdx-net-natives/${TARGET}/src/main/resources/natives/${TARGET}"
+    DEST="${ROOT}/flixelgdx-net-natives/flixelgdx-net-natives-${TARGET}/src/main/resources/natives/${TARGET}"
     ;;
   macos-x86_64)
     LIBRARY="libflixelnetrtc.dylib"
-    DEST="${ROOT}/flixelgdx-net-natives/${TARGET}/src/main/resources/natives/${TARGET}"
+    DEST="${ROOT}/flixelgdx-net-natives/flixelgdx-net-natives-${TARGET}/src/main/resources/natives/${TARGET}"
     ARGS+=(-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
     ;;
   macos-aarch64)
     LIBRARY="libflixelnetrtc.dylib"
-    DEST="${ROOT}/flixelgdx-net-natives/${TARGET}/src/main/resources/natives/${TARGET}"
+    DEST="${ROOT}/flixelgdx-net-natives/flixelgdx-net-natives-${TARGET}/src/main/resources/natives/${TARGET}"
     ARGS+=(-DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
     ;;
   android-*)

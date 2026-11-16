@@ -1,6 +1,6 @@
 # Native WebRTC libraries
 
-Each folder here becomes one small jar, `flixelgdx-net-natives-<platform>`, that holds the native WebRTC library
+Each `flixelgdx-net-natives-<platform>` folder here becomes one small jar of the same name that holds the native WebRTC library
 for that platform. A game adds the jars of the platforms it ships to.
 
 The libraries themselves are **not** in the repository. They are built by the
